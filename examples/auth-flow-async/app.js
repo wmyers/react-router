@@ -226,7 +226,6 @@ var Shim = React.createClass({
     }
   },
 
-  // redirect when using the shim for the first time
   componentWillMount() {
     this.transitionCheck();
   },
