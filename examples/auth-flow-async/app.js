@@ -204,7 +204,7 @@ var Login = React.createClass({
   }
 });
 
-// YOU SHOULD ONLY GO HERE WHEN NOT LOGGED IN and are auto-logging in
+// YOU SHOULD ONLY GO HERE WHEN NOT LOGGED IN
 var Shim = React.createClass({
   contextTypes: {
     router: React.PropTypes.object.isRequired
