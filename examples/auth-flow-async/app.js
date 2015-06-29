@@ -9,93 +9,94 @@ function loginRequest(email, pass, cb) {
     if (email === 'joe@example.com' && pass === 'password1') {
       cb({
         authenticated: true,
-        token: {
-          key: Math.random().toString(36).substring(7)
-        }
+        token: Math.random().toString(36).substring(7)
       });
     } else {
       cb({authenticated: false});
     }
-  }, 0);
+  }, 200);
 }
 
 function getUserDataRequest(token, cb) {
   setTimeout(() => {
-    //assume tokens do not expire
-    if(token.key){
+    //assume tokens do not expire for test purposes
+    if(token){
       cb({
         name: 'Joe Bloggs',
         creditcard: '1234567890'
       })
-    }else{
-      cb({
-        error: 'token expired'
-      })
     }
-  }, 0);
+  }, 2000);
 }
 
 // next path store, default to dashboard
 var nextPathStore = '/dashboard';
 
+//token name - NB token value is stored as a string too
+var tokenName = 'jwt_test'
+
 // auth module
 var auth = (function(){
-  var isLoggedIn = false,  user = null, self = {
-    //login with basic auth (email and password) to retrieve a token
+  var loggedIn = false, loggingIn = false,  user = null, self = {
     login: function (email, pass, cb) {
+      loggingIn = true;
       loginRequest(email, pass, (res) => {
         if (res.authenticated) {
-          // if login accepted then use the returned token to get user data
           self.getUserData(res.token);
         } else {
           self.logout();
-          cb (isLoggedIn);
+          cb (loggedIn);
         }
       });
     },
     getUserData: function(token){
+      loggingIn = true;
       getUserDataRequest(token, (res) => {
         if(res.error){
           self.logout();
         }else{
           user = res;
-          localStorage.token = token;
-          isLoggedIn = true;
+          localStorage.setItem(tokenName, token);
+          loggedIn = true;
+          loggingIn = false;
+          self.onChange(loggedIn);
         }
-        self.onChange(isLoggedIn);
       })
     },
     logout: function () {
-      isLoggedIn = false;
+      loggingIn = false;
+      loggedIn = false;
       user = null;
-      delete localStorage.token;
-      self.onChange(isLoggedIn);
+      localStorage.setItem(tokenName, '');
+      self.onChange(loggedIn);
     },
     isLoggedIn: function () {
-      return isLoggedIn;
+      return loggedIn;
+    },
+    isLoggingIn: function () {
+      return loggingIn;
     },
     getUser: function (){
       return user;
     },
     autoLogin: function (){
-      console.log('auth auto-login at start with localStorage token:', localStorage.token);
-      if (localStorage.token) {
-        self.getUserData(localStorage.token);
+      var token = localStorage.getItem(tokenName);
+      if (token) {
+        self.getUserData(token);
       }
     },
-    //binds to listener function in App component
+    //binds to listener in App component
     onChange: function () {}
   };
   return self;
 })();
 
-//authenticated component wrapper hook
+//authenticated component hook
 var requireAuth =  function(nextState, transition) {
   if (!auth.isLoggedIn()){
     //store the path
     nextPathStore = nextState.location.pathname
     //redirect to the shim
-    console.log('in requireAuth hook, redirecting to shim with nextPathStore:', nextPathStore);
     transition.to('/shim');
   }
 }
@@ -124,10 +125,11 @@ var App = React.createClass({
       loggedIn: loggedIn
     });
     //re-direct post login or logout
-    console.log('in App authListener, relocating to', nextPathStore);
     if(loggedIn){
+      console.log('in App authListener, relocating to', nextPathStore);
       this.context.router.transitionTo(nextPathStore);
     }else{
+      console.log('in App authListener, relocating to login');
       this.context.router.transitionTo('/login');
     }
   },
@@ -170,7 +172,9 @@ var Dashboard = React.createClass({
 });
 
 var Login = React.createClass({
-  mixins: [ Navigation ],
+  contextTypes: {
+    router: React.PropTypes.object.isRequired
+  },
   getInitialState() {
     return {
       error: false
@@ -185,6 +189,8 @@ var Login = React.createClass({
       if (!loggedIn)
         return this.setState({ error: true });
     });
+    //OPTIONAL go to the shim while logging in
+    this.context.router.transitionTo('/shim');
   },
   render() {
     return (
@@ -200,35 +206,33 @@ var Login = React.createClass({
   }
 });
 
-// shim component for async stuff when logging in
+// YOU SHOULD ONLY GO HERE WHEN NOT LOGGED IN and are auto-logging in
 var Shim = React.createClass({
   contextTypes: {
     router: React.PropTypes.object.isRequired
   },
-  //main function
+
   transitionNext(){
     var router = this.context.router;
-    if (auth.isLoggedIn()){
-      //can wait here for some reason
-      setTimeout(() => {
-        console.log('redirecting from shim to', nextPathStore);
-        router.transitionTo(nextPathStore);
-      }, 1000);
-    }else{
+    if (!auth.isLoggingIn()){
+      console.log('in shim redirecting to login');
       router.transitionTo('/login');
     }
+
+    //if you've gone here by accident
+    if(auth.isLoggedIn()){
+      console.log('in shim by accident, redirecting to', nextPathStore);
+      router.transitionTo(nextPathStore);
+    }
   },
+
   // redirect when using the shim for the first time
   componentWillMount() {
     this.transitionNext();
   },
-  // redirect elsewhere in component lifecycle - e.g. when logging out and in again
-  shouldComponentUpdate(){
-    this.transitionNext();
-    return false;
-  },
+
   render() {
-    return <div>Waiting...</div>;
+    return <div>waiting...</div>;
   }
 });
 
@@ -241,6 +245,12 @@ var Logout = React.createClass({
   }
 });
 
+var About = React.createClass({
+  render() {
+    return <h1>About</h1>;
+  }
+});
+
 //do this before declaring the routes
 auth.autoLogin();
 
@@ -250,6 +260,7 @@ React.render((
       <Route path="login" component={Login}/>
       <Route path="logout" component={Logout}/>
       <Route path="shim" component={Shim}/>
+      <Route path="about" component={About}/>
       <Route path="dashboard" component={Dashboard} onEnter={requireAuth}/>
     </Route>
   </Router>
