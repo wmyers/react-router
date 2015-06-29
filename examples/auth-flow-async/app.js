@@ -1,5 +1,5 @@
 import React, { findDOMNode } from 'react';
-import { Router, Route, Link, Navigation } from 'react-router';
+import { Router, Route, Link } from 'react-router';
 import HashHistory from 'react-router/lib/HashHistory';
 
 
@@ -26,7 +26,7 @@ function getUserDataRequest(token, cb) {
         creditcard: '1234567890'
       })
     }
-  }, 2000);
+  }, 500);
 }
 
 // next path store, default to dashboard
@@ -37,9 +37,9 @@ var tokenName = 'jwt_test'
 
 // auth module
 var auth = (function(){
-  var loggedIn = false, loggingIn = false,  user = null, self = {
+  var loggedIn = false, asyncLoggingIn = false,  user = null, self = {
     login: function (email, pass, cb) {
-      loggingIn = true;
+      asyncLoggingIn = true;
       loginRequest(email, pass, (res) => {
         if (res.authenticated) {
           self.getUserData(res.token);
@@ -50,7 +50,7 @@ var auth = (function(){
       });
     },
     getUserData: function(token){
-      loggingIn = true;
+      asyncLoggingIn = true;
       getUserDataRequest(token, (res) => {
         if(res.error){
           self.logout();
@@ -58,13 +58,13 @@ var auth = (function(){
           user = res;
           localStorage.setItem(tokenName, token);
           loggedIn = true;
-          loggingIn = false;
+          asyncLoggingIn = false;
           self.onChange(loggedIn);
         }
       })
     },
     logout: function () {
-      loggingIn = false;
+      asyncLoggingIn = false;
       loggedIn = false;
       user = null;
       localStorage.setItem(tokenName, '');
@@ -73,8 +73,8 @@ var auth = (function(){
     isLoggedIn: function () {
       return loggedIn;
     },
-    isLoggingIn: function () {
-      return loggingIn;
+    isAsyncLoggingIn: function () {
+      return asyncLoggingIn;
     },
     getUser: function (){
       return user;
@@ -189,8 +189,6 @@ var Login = React.createClass({
       if (!loggedIn)
         return this.setState({ error: true });
     });
-    //OPTIONAL go to the shim while logging in
-    this.context.router.transitionTo('/shim');
   },
   render() {
     return (
@@ -212,9 +210,11 @@ var Shim = React.createClass({
     router: React.PropTypes.object.isRequired
   },
 
-  transitionNext(){
+  transitionCheck(){
     var router = this.context.router;
-    if (!auth.isLoggingIn()){
+
+    //if not waiting for some async login outcome then re-direct to login
+    if (!auth.isAsyncLoggingIn()){
       console.log('in shim redirecting to login');
       router.transitionTo('/login');
     }
@@ -228,7 +228,7 @@ var Shim = React.createClass({
 
   // redirect when using the shim for the first time
   componentWillMount() {
-    this.transitionNext();
+    this.transitionCheck();
   },
 
   render() {
@@ -251,7 +251,6 @@ var About = React.createClass({
   }
 });
 
-//do this before declaring the routes
 auth.autoLogin();
 
 React.render((
